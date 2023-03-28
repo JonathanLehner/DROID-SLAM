@@ -95,8 +95,11 @@ def droid_visualization(video, device="cuda:0"):
 
             images = torch.index_select(video.images, 0, dirty_index)
             images = images.cpu()[:,[2,1,0],3::8,3::8].permute(0,2,3,1) / 255.0
-            points = droid_backends.iproj(SE3(poses).inv().data, disps, video.intrinsics[0]).cpu()
 
+            points = droid_backends.iproj(SE3(poses).inv().data, disps, video.intrinsics[0]).cpu()
+            #print(points.shape) # torch.Size([8, 73, 41, 3])
+
+            print("droid_visualization.filter_thresh", droid_visualization.filter_thresh)
             thresh = droid_visualization.filter_thresh * torch.ones_like(disps.mean(dim=[1,2]))
             
             count = droid_backends.depth_filter(
@@ -127,7 +130,7 @@ def droid_visualization(video, device="cuda:0"):
                 mask = masks[i].reshape(-1)
                 pts = points[i].reshape(-1, 3)[mask].cpu().numpy()
                 clr = images[i].reshape(-1, 3)[mask].cpu().numpy()
-                
+
                 ## add point actor ###
                 point_actor = create_point_actor(pts, clr)
                 vis.add_geometry(point_actor)

@@ -1,4 +1,4 @@
-name: droidenv
+name: droidenv # conda install python==3.8
 channels:
   - rusty1s
   - pytorch
@@ -6,13 +6,15 @@ channels:
   - nvidia
   - conda-forge
   - defaults
+  #- conda-forge/label/broken # J: does not seem to help
 dependencies:
+  - python=3.8
   - pytorch-scatter
   - torchaudio
   - torchvision
   - open3d
   - pytorch=1.10
-  - cudatoolkit=11.3
+  #- cudatoolkit=11.3 # J: should use cudatoolkit-dev
   - tensorboard
   - scipy
   - opencv

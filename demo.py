@@ -16,6 +16,9 @@ from droid import Droid
 
 import torch.nn.functional as F
 
+from lietorch import SE3
+import droid_backends
+
 
 def show_image(image):
     image = image.permute(1, 2, 0).cpu().numpy()
@@ -37,7 +40,9 @@ def image_stream(imagedir, calib, stride):
     image_list = sorted(os.listdir(imagedir))[::stride]
 
     for t, imfile in enumerate(image_list):
-        image = cv2.imread(os.path.join(imagedir, imfile))
+        image_path = os.path.join(imagedir, imfile)
+        print(image_path)
+        image = cv2.imread(image_path)
         if len(calib) > 4:
             image = cv2.undistort(image, K, calib[4:])
 
@@ -69,6 +74,19 @@ def save_reconstruction(droid, reconstruction_path):
     poses = droid.video.poses[:t].cpu().numpy()
     intrinsics = droid.video.intrinsics[:t].cpu().numpy()
 
+
+    print(droid.video.poses)
+    points = droid_backends.iproj(SE3(droid.video.poses).inv().data, droid.video.disps, droid.video.intrinsics[0]).cpu()
+    print("3D points", points.shape) # 3D points torch.Size([512, 73, 41, 3])
+
+    filter_thresh = 0.005
+    thresh = filter_thresh * torch.ones_like(droid.video.disps.mean(dim=[1,2]))  
+    dirty_index, = torch.where(droid.video.dirty.clone())      
+    count = droid_backends.depth_filter(droid.video.poses, droid.video.disps, droid.video.intrinsics[0], dirty_index, thresh)
+    print(dirty_index)
+    print(t, tstamps.shape, images.shape, disps.shape, poses.shape, intrinsics.shape)
+
+    print("reconstruction_path", reconstruction_path)
     Path("reconstructions/{}".format(reconstruction_path)).mkdir(parents=True, exist_ok=True)
     np.save("reconstructions/{}/tstamps.npy".format(reconstruction_path), tstamps)
     np.save("reconstructions/{}/images.npy".format(reconstruction_path), images)
@@ -82,7 +100,7 @@ if __name__ == '__main__':
     parser.add_argument("--imagedir", type=str, help="path to image directory")
     parser.add_argument("--calib", type=str, help="path to calibration file")
     parser.add_argument("--t0", default=0, type=int, help="starting frame")
-    parser.add_argument("--stride", default=3, type=int, help="frame stride")
+    parser.add_argument("--stride", default=1, type=int, help="frame stride")
 
     parser.add_argument("--weights", default="droid.pth")
     parser.add_argument("--buffer", type=int, default=512)
@@ -90,9 +108,9 @@ if __name__ == '__main__':
     parser.add_argument("--disable_vis", action="store_true")
 
     parser.add_argument("--beta", type=float, default=0.3, help="weight for translation / rotation components of flow")
-    parser.add_argument("--filter_thresh", type=float, default=2.4, help="how much motion before considering new keyframe")
+    parser.add_argument("--filter_thresh", type=float, default=1.4, help="how much motion before considering new keyframe")
     parser.add_argument("--warmup", type=int, default=8, help="number of warmup frames")
-    parser.add_argument("--keyframe_thresh", type=float, default=4.0, help="threshold to create a new keyframe")
+    parser.add_argument("--keyframe_thresh", type=float, default=2.0, help="threshold to create a new keyframe")
     parser.add_argument("--frontend_thresh", type=float, default=16.0, help="add edges between frames whithin this distance")
     parser.add_argument("--frontend_window", type=int, default=25, help="frontend optimization window")
     parser.add_argument("--frontend_radius", type=int, default=2, help="force edges between frames within radius")
@@ -115,6 +133,7 @@ if __name__ == '__main__':
         args.upsample = True
 
     tstamps = []
+    print("imgdir", args.imagedir)
     for (t, image, intrinsics) in tqdm(image_stream(args.imagedir, args.calib, args.stride)):
         if t < args.t0:
             continue
@@ -128,7 +147,15 @@ if __name__ == '__main__':
         
         droid.track(t, image, intrinsics=intrinsics)
 
+    print("save reconstruction? ", args.reconstruction_path)
     if args.reconstruction_path is not None:
         save_reconstruction(droid, args.reconstruction_path)
 
     traj_est = droid.terminate(image_stream(args.imagedir, args.calib, args.stride))
+    print(traj_est.shape)
+    np.save("reconstructions/{}/traj_est.npy".format(args.reconstruction_path), traj_est)
+
+
+    print("finished")
+    exit()
+
